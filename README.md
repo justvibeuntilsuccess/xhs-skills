@@ -1,54 +1,57 @@
 # xhs-skills
 
-两个用于**小红书 / RedNote（国际站）图片下载**的 agent skill，来自一套真实跑通的流程，都能直接拿去用：
+[![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/justvibeuntilsuccess/xhs-skills/blob/main/README.md)
+[![zh-cn](https://img.shields.io/badge/lang-zh--cn-green.svg)](https://github.com/justvibeuntilsuccess/xhs-skills/blob/main/README.zh-cn.md)
 
-| skill | 作用 |
+Two agent skills for downloading images from **Xiaohongshu / RedNote (international site)**, extracted from a setup that actually works end to end:
+
+| skill | what it does |
 |---|---|
-| [`xhs-media-download`](xhs-media-download/SKILL.md) | 给一个笔记链接 → 把笔记里的照片按 CDN 提供的**最高清晰度**存成**无损 PNG**（可选发到 Telegram）；也支持批量下载某个博主最新 N 篇 |
-| [`xhs-comment-images`](xhs-comment-images/SKILL.md) | 把**评论区**里所有人发的图全部抓下来（翻完所有分页 + 展开所有回复），打包成一个 zip |
+| [`xhs-media-download`](xhs-media-download/SKILL.md) | Give it a note link → saves every photo in the note at the **highest quality the CDN serves**, as **lossless PNG** (optionally delivered to Telegram). Also does batch downloads of one author's latest N notes. |
+| [`xhs-comment-images`](xhs-comment-images/SKILL.md) | Pulls **every photo posted in the comments** (all pages scrolled + all replies expanded) and delivers them as a single zip. |
 
-两个 skill 都写成 Hermes 的 skill 格式（`SKILL.md` + `scripts/`），但里面的坑与结论与具体 agent 无关，换成别的 agent / 纯脚本流程一样适用。
+Both are written in the Hermes skill format (`SKILL.md` + `scripts/`), but the findings and gotchas inside are agent-agnostic — the same steps work in any other agent, or as plain scripts.
 
-## 装法
+## Install
 
 ```bash
 mkdir -p ~/.hermes/skills/media
 cp -r xhs-media-download xhs-comment-images ~/.hermes/skills/media/
 ```
 
-不用 Hermes 的话，直接读 `SKILL.md` 里的过程，或者单独调 `scripts/*.py`：
+Not using Hermes? Read the procedure in each `SKILL.md`, or call the scripts directly:
 
 ```bash
-python3 xhs-media-download/scripts/fetch_photos.py "<笔记链接>" --telegram
-python3 xhs-media-download/scripts/fetch_user_photos.py --from-note "<任意笔记链接>" --limit 20 --zip
+python3 xhs-media-download/scripts/fetch_photos.py "<note link>" --telegram
+python3 xhs-media-download/scripts/fetch_user_photos.py --from-note "<any note link>" --limit 20 --zip
 ```
 
-## 前置条件
+## Requirements
 
-- **Python 3 + Pillow + curl**（`python3 -m pip install --user pillow`）
-- **一个已登录的 [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) 实例**：脚本默认调它本地的 `http://127.0.0.1:18060/api/v1`，并从 `~/xiaohongshu-mcp/data/cookies.json` 读扫码登录后的 cookies（cookie 只在你本机使用，不会外传）
-- 想用 Telegram 发送（`--telegram`）才需要 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HOME_CHANNEL`
+- **Python 3 + Pillow + curl** (`python3 -m pip install --user pillow`)
+- **A logged-in [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) instance**: the scripts call its local `http://127.0.0.1:18060/api/v1` API and read the QR-login cookies from `~/xiaohongshu-mcp/data/cookies.json` (cookies stay on your machine; nothing is sent anywhere else)
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HOME_CHANNEL` only if you want the `--telegram` delivery
 
-## 环境变量
+## Environment variables
 
-| 变量 | 默认 | 说明 |
+| Variable | Default | Purpose |
 |---|---|---|
-| `XHS_COOKIES` | `~/xiaohongshu-mcp/data/cookies.json` | cookies 文件路径 |
-| `XHS_PROXY` | 空（直连） | 可选出口代理，如 `socks5h://host:port`。图片 CDN 本身不校验 IP、不需要登录，所以多数情况**不需要**代理；只有抓笔记页 HTML / 主页数据时某些出口会被降级成游客页，这时才用得上 |
-| `HERMES_ENV_FILE` | `~/.hermes/.env` | 存放 Telegram 凭据的 env 文件 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HOME_CHANNEL` | — | 仅 `--telegram` 时需要 |
+| `XHS_COOKIES` | `~/xiaohongshu-mcp/data/cookies.json` | Path to the cookies file |
+| `XHS_PROXY` | empty (direct) | Optional egress proxy, e.g. `socks5h://host:port`. The image CDN is neither login- nor IP-gated, so most runs **don't need** a proxy — it only matters when fetching note HTML / profile data, where some egresses get downgraded to the guest shell. |
+| `HERMES_ENV_FILE` | `~/.hermes/.env` | File holding the Telegram credentials |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_HOME_CHANNEL` | — | Only needed for `--telegram` |
 
-## 几个值得先知道的结论（都实测过）
+## Findings worth knowing up front (all measured)
 
-- **要原图就得用「App 分享 → 复制链接」的整段文字**：链接里的 `xsec_token` 是必需的，裸链接（手打 URL）实测 302 拿不到数据。
-- **别自己拼图片变体 URL**：CDN 每个尺寸的路径都带独立签名，把某个尺寸的后缀拼到另一个的 hash 上、把 `_3` 改成 `_1`、或删掉 `!...` 后缀，都会 **403**。只用拿到的 URL。
-- **不要用文件大小判断清晰度**：WebP 比 JPEG 更省字节，实测同一张图 `webp_3`（164 KB）和 `jpg_3`（190 KB）像素差只有 1.8/255 —— 更小的 WebP 不等于更差的图。
-- **评论区那套不能自己签名**：评论接口的 `X-s` / `X-t` 等签名与 URL、时间绑定，无法重放；正确做法是让页面自己发请求，然后 hook `fetch`/`XHR` 抓返回（`hook_capture.js` 就是干这个的）。
-- **评论区翻页必须派发真实的 `mouseWheel` 事件**，只改 `scrollTop` 永远不会触发加载；另外**视口高度是个隐藏开关**（~577 px 时只加载第一页，1100 px 才会继续加载）。
-- **小红书的 `www.xiaohongshu.com` 对非中国出口会返回游客壳页**（实测 48 KB），而国际站 `www.rednote.com` 返回完整状态（351 KB）——所以非中国出口要打 `rednote.com`。
+- **For originals you need the app's own share text**: the `xsec_token` inside the link is mandatory. A bare, hand-typed URL returns `302` with no data (measured).
+- **Never synthesise an image variant URL**: every rendition on the CDN has its own signed path (timestamp + hash). Recombining one rendition's suffix with another's hash, switching `_3` to `_1`/`_2`, or dropping the `!...` suffix all return **403**. Use only URLs a response handed you.
+- **Don't rank renditions by file size**: WebP is simply the more efficient codec. Measured on the same picture, `webp_3` (164 KB) vs `jpg_3` (190 KB) differed by a pixel-difference mean of 1.8/255 — a smaller WebP is not a worse image.
+- **The comment API cannot be hand-signed**: its `X-s` / `X-t` signatures are bound to the URL and the time and cannot be replayed. Let the page make its own calls and hook `fetch`/`XHR` instead (`hook_capture.js` does exactly that).
+- **Comment pagination needs real `mouseWheel` events** — setting `scrollTop` never fires the loader. And **viewport height is a hidden gate**: at ~577 px only page 1 loads; at 1100 px the list keeps growing.
+- **`www.xiaohongshu.com` serves a guest shell to non-China egresses** (measured 48 KB), while the international host `www.rednote.com` returns the full state (351 KB) — use `rednote.com` outside China.
 
-## 免责声明
+## Disclaimer
 
-仅供个人研究、备份自己可见的内容使用。请遵守小红书的用户协议与 robots 规则，控制请求频率（脚本里已内置 sleep 与分页节流），**不要**把抓下来的内容用于再发布、转卖或批量采集。图片版权属于原作者。
+For personal research and backing up content you can already see. Respect Xiaohongshu's terms of service and robots rules, keep request rates low (the scripts already sleep between requests and pages), and **do not** republish, resell or bulk-scrape what you download. Image copyright belongs to the original authors.
 
-MIT（见各 `SKILL.md` 的 frontmatter）。
+MIT (see the `license` field in each `SKILL.md`).
